@@ -1,0 +1,7 @@
+fastapi==0.95.2
+uvicorn[standard]==0.22.0
+pydantic==2.9.0
+httpx==0.24.1
+requests==2.31.0
+loguru==0.7.0
+chromadb==0.5.11

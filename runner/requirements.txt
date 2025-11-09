@@ -1,0 +1,6 @@
+# FastAPI + ASGI server
+fastapi==0.115.2
+uvicorn==0.30.3
+
+# Pydantic for schema validation
+pydantic==2.9.2

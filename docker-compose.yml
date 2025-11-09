@@ -1,48 +1,11 @@
-version: "3.9"
+version: "3.8"
+
 services:
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: neuroforge_chroma
-    ports: ["8002:8000"]
-    volumes:
-      - ./data/chroma:/chroma
-    restart: unless-stopped
-
-  api:
-    build: ./api
-    container_name: neuroforge_api
-    env_file:
-      - .env
-    ports:
-      - "8000:8000"
-    depends_on:
-      - chroma
-    volumes:
-      - ./api:/app
-      - ./data/tools:/app/data/tools
-    restart: on-failure
-
   runner:
     build: ./runner
-    container_name: neuroforge_runner
-    env_file:
-      - .env
+    container_name: neuroforge-runner
     ports:
-      - "8100:8100"
-    volumes:
-      - ./data/artifacts:/artifacts
-      - /var/run/docker.sock:/var/run/docker.sock   # runner may use host docker
-    restart: on-failure
-
-  frontend:
-    build: ./frontend
-    container_name: neuroforge_frontend
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    depends_on:
-      - api
-    volumes:
-      - ./frontend:/app
-    restart: on-failure
+      - "8001:8001"
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

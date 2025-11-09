@@ -1,0 +1,121 @@
+# -----------------------------
+# 🔧 PYTHON / FASTAPI / LANGGRAPH
+# -----------------------------
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env.local
+
+# Local config & keys
+.env
+*.key
+*.pem
+
+# Logs & debug
+*.log
+logs/
+api/logs/
+data/logs/
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+pytest_cache/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+
+# Jupyter / notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# MyPy / Pylint
+.mypy_cache/
+.dmypy.json
+.pyre/
+
+# -----------------------------
+# 🧱 NODE / NEXT.JS (Frontend)
+# -----------------------------
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next/
+out/
+dist/
+build/
+package-lock.json
+.env.development.local
+.env.production.local
+
+# Local runtime files
+.DS_Store
+
+# -----------------------------
+# 🐳 DOCKER / CONTAINERS
+# -----------------------------
+
+# Ignore all build cache and volumes
+**/Dockerfile~
+docker-compose.override.yml
+*.pid
+*.seed
+tmp/
+*.tar
+*.img
+
+# -----------------------------
+# 🧬 VECTOR DB / MEMORY DATA
+# -----------------------------
+
+# Chroma vector database files
+data/chroma/
+data/tools/
+data/backups/
+data/*.sqlite3
+
+# -----------------------------
+# 🧾 IDE / SYSTEM FILES
+# -----------------------------
+
+# VS Code / PyCharm / Others
+.vscode/
+.idea/
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db
+.DS_Store
+
+# -----------------------------
+# 🧩 MISCELLANEOUS
+# -----------------------------
+
+# Backup or temp files
+*.bak
+*.tmp
+*.old
+*.orig
+*.rej
+# Ignore all data contents except placeholder files
+data/*
+!data/.gitkeep
+!data/chroma/.gitkeep
+!data/logs/.gitkeep
+!data/tools/.gitkeep

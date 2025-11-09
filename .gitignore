@@ -113,6 +113,7 @@ Thumbs.db
 *.old
 *.orig
 *.rej
+*.env
 # Ignore all data contents except placeholder files
 data/*
 !data/.gitkeep

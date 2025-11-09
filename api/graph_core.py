@@ -2,7 +2,7 @@
 from langgraph.graph import StateGraph, END
 from typing import Dict, Any, TypedDict
 import logging
-
+from memory import rag_manager
 from agents import code_writer, code_executor, code_fixer
 
 logger = logging.getLogger(__name__)
@@ -31,26 +31,50 @@ def initial_state(task: str) -> NFState:
 
 
 # --- 2️⃣ Writer Node ---
-def node_writer(state: NFState) -> NFState:
+def node_writer(state):
     logger.info("🧠 Writing code...")
-    code, language = code_writer.generate_code(state["task"], state.get("language"))
+    # form a retrieval query from task + language hint
+    query = state["task"]
+    # fetch relevant tools/docs
+    tools = rag_manager.retrieve_tools(query, top_k=5)
+    docs = rag_manager.retrieve_docs(query, top_k=5)
+    # build contextual prompt
+    context_pieces = []
+    for t in tools:
+        context_pieces.append(f"Existing tool ({t['metadata'].get('language')}):\n{t['code']}")
+    for d in docs:
+        context_pieces.append(f"Doc: {d['title']}\n{d['content']}")
+    context = "\n\n".join(context_pieces) if context_pieces else None
+
+    code, language = code_writer.generate_code(state["task"], language=state.get("language"), context=context)
     state["code"] = code
     state["language"] = language
     state["attempts"] += 1
     return state
 
 
+
 # --- 3️⃣ Executor Node ---
-def node_executor(state: NFState) -> NFState:
+def node_executor(state):
     logger.info("⚙️ Executing code...")
     result = code_executor.execute(state["code"], language=state["language"])
     state["result"] = result
     if result["returncode"] == 0:
         logger.info("✅ Execution succeeded")
         state["error"] = None
+        # persist the working tool into memory
+        try:
+            rag_manager.add_tool(name=None, language=state["language"], code=state["code"], metadata={"source":"auto_promote"})
+        except Exception as e:
+            logger.warning("Failed to persist tool: %s", e)
     else:
         logger.info("❌ Execution failed")
-        state["error"] = result["stderr"]
+        state["error"] = result["stderr"] or result.get("stderr")
+        # persist error for future retrieval
+        try:
+            rag_manager.add_error(error_text=state["error"], stderr=state["result"].get("stderr"), context=state["code"])
+        except Exception as e:
+            logger.warning("Failed to persist error: %s", e)
     return state
 
 
@@ -93,12 +117,22 @@ def build_graph():
 
 # --- 7️⃣ Runner ---
 def run_task(task: str):
+    print("=== NeuroForge LangGraph Orchestrator ===")
     flow = build_graph()
     state = flow.invoke(initial_state(task))
-    result = state["result"]
 
-    print("\n--- FINAL RESULT ---")
-    if result["returncode"] == 0:
-        print("✅ SUCCESS\n", result["stdout"])
-    else:
-        print("🚫 FAILED\n", result["stderr"])
+    # Debug print for clarity
+    print("\n--- FINAL STATE ---")
+    print(state)
+
+    # Safely extract result
+    result = {
+        "language": state.get("language"),
+        "attempts": state.get("attempts", 0),
+        "stdout": state.get("result", {}).get("stdout", ""),
+        "stderr": state.get("result", {}).get("stderr", ""),
+        "returncode": state.get("result", {}).get("returncode", None),
+    }
+
+    return result
+

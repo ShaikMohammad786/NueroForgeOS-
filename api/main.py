@@ -1,51 +1,58 @@
-# main.py
-import logging
-from dotenv import load_dotenv
-from agents import code_writer, code_executor, code_fixer
+# api/main.py
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import os, logging
+from contextlib import asynccontextmanager
+from graph_core import run_task
+from memory.db_init import init_chroma_client, init_embedding_model
 
-load_dotenv()
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("NeuroForgeKernel")
 
-def self_correcting_flow(task: str, attempts: int = 3):
-    context = None
-    code = None
-    language = None
+# --- TEMP FIX for huggingface_hub ImportError ---
+import huggingface_hub
+if not hasattr(huggingface_hub, "cached_download"):
+    try:
+        from huggingface_hub import hf_hub_download
+        huggingface_hub.cached_download = hf_hub_download
+        print("✅ patched huggingface_hub.cached_download (startup fix)")
+    except Exception as e:
+        print("⚠️ Patch failed:", e)
+# ------------------------------------------------
 
-    for attempt in range(1, attempts + 1):
-        print(f"\n🧠 Attempt {attempt}: Generating code...")
-        try:
-            code, language = code_writer.generate_code(task, language=language, context=context)
-        except Exception as e:
-            print("Generation failed:", e)
-            return
 
-        print(f"-> Detected language: {language}")
-        print("-> Executing...")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("🚀 Starting NeuroForge Memory subsystem...")
+    init_embedding_model()
+    client = init_chroma_client()
+    for col in ["tools", "errors", "docs", "patterns"]:
+        if col not in [c.name for c in client.list_collections()]:
+            client.create_collection(name=col)
+    yield
+    print("🧹 Shutting down NeuroForge (cleanup if needed)...")
 
-        res = code_executor.execute(code, language=language)
-        if res["returncode"] == 0:
-            print("\n✅ Success! Output:\n")
-            print(res["stdout"])
-            return
-        else:
-            print("\n❌ Failed. Stderr:\n", res["stderr"])
-            try:
-                fixed = code_fixer.fix_code(code, res["stderr"], language=language, context=context)
-            except Exception as e:
-                print("Auto-fix failed:", e)
-                return
-            context = f"Previous attempt failed with error:\n{res['stderr']}\nPlease fix and retry."
+app = FastAPI(
+    title="NeuroForge Kernel",
+    description="Self-Improving Runtime for AI Agents",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
-    print("\n🚫 All attempts exhausted. Try refining your prompt.")
+class TaskRequest(BaseModel):
+    task: str
 
-def main():
-    print("=== NeuroForge Mini: Multi-language Self-Correcting Runtime ===")
-    task = input("🧩 Describe your task (e.g., 'in c print hello world'): ").strip()
-    if not task:
-        print("No task provided.")
-        return
-    self_correcting_flow(task)
+@app.get("/")
+def root():
+    return {"message": "🧠 NeuroForge Kernel is alive"}
 
-if __name__ == "__main__":
-    main()
+
+@app.post("/run_task")
+def run_task_api(req: TaskRequest):
+    try:
+        logger.info("Received new task: %s", req.task)
+        result = run_task(req.task)
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.exception("Task failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))

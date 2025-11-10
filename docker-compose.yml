@@ -29,6 +29,7 @@ services:
     volumes:
       - ./runner:/app
       - ./data/chroma:/data/chroma
+      - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped

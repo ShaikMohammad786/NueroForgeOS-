@@ -59,7 +59,12 @@ def _run_subprocess(cmd, cwd, timeout) -> Dict[str, Any]:
 # 🌐 Runner-based Remote Execution
 # -------------------------------
 
-def execute(code: str, language: str = "python", timeout: int = 8) -> dict:
+def execute(
+    code: str,
+    language: str = "python",
+    timeout: int = 8,
+    requirements: Optional[list[str]] = None,
+) -> dict:
     """
     Send code to the isolated Runner microservice.
     Always returns:
@@ -72,6 +77,8 @@ def execute(code: str, language: str = "python", timeout: int = 8) -> dict:
         }
     """
     payload = {"language": language, "code": code, "timeout": timeout}
+    if requirements:
+        payload["requirements"] = requirements
 
     try:
         resp = requests.post(RUNNER_URL, json=payload, timeout=timeout + 5)

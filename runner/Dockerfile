@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Install compilers and runtimes
 RUN apt-get update && apt-get install -y \
-    gcc g++ openjdk-21-jdk nodejs npm curl bash && \
+    gcc g++ openjdk-21-jdk nodejs npm curl bash docker.io && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt

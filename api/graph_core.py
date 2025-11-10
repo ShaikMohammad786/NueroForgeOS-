@@ -1,4 +1,3 @@
-# api/graph_core.py
 from langgraph.graph import StateGraph, END
 from typing import Dict, Any, TypedDict
 import logging
@@ -8,7 +7,8 @@ from agents import code_writer, code_executor, code_fixer
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# --- 1️⃣ Define State schema (LangGraph expects a type, not a function) ---
+
+# --- 1️⃣ Define State Schema ---
 class NFState(TypedDict, total=False):
     task: str
     language: str
@@ -19,7 +19,7 @@ class NFState(TypedDict, total=False):
 
 
 def initial_state(task: str) -> NFState:
-    """Initialize the state dictionary."""
+    """Initialize the LangGraph state."""
     return {
         "task": task,
         "language": None,
@@ -30,51 +30,68 @@ def initial_state(task: str) -> NFState:
     }
 
 
-# --- 2️⃣ Writer Node ---
+# --- 2️⃣ Code Writer Node ---
 def node_writer(state):
     logger.info("🧠 Writing code...")
-    # form a retrieval query from task + language hint
     query = state["task"]
-    # fetch relevant tools/docs
+
+    # retrieve relevant tools and docs
     tools = rag_manager.retrieve_tools(query, top_k=5)
     docs = rag_manager.retrieve_docs(query, top_k=5)
-    # build contextual prompt
-    context_pieces = []
-    for t in tools:
-        context_pieces.append(f"Existing tool ({t['metadata'].get('language')}):\n{t['code']}")
-    for d in docs:
-        context_pieces.append(f"Doc: {d['title']}\n{d['content']}")
-    context = "\n\n".join(context_pieces) if context_pieces else None
 
-    code, language = code_writer.generate_code(state["task"], language=state.get("language"), context=context)
+    context_parts = []
+    for t in tools:
+        context_parts.append(f"Existing tool ({t['metadata'].get('language')}):\n{t.get('code', '')}")
+    for d in docs:
+        context_parts.append(f"Doc: {d.get('title')}\n{d.get('content')}")
+
+    context = "\n\n".join(context_parts) if context_parts else None
+
+    code, language = code_writer.generate_code(
+        state["task"], language=state.get("language"), context=context
+    )
     state["code"] = code
     state["language"] = language
     state["attempts"] += 1
     return state
 
 
-
-# --- 3️⃣ Executor Node ---
+# --- 3️⃣ Code Executor Node ---
 def node_executor(state):
     logger.info("⚙️ Executing code...")
     result = code_executor.execute(state["code"], language=state["language"])
     state["result"] = result
-    if result["returncode"] == 0:
+
+    # extract actual return code from nested result
+    returncode = result.get("result", {}).get("returncode", 1)
+
+    if returncode == 0:
         logger.info("✅ Execution succeeded")
         state["error"] = None
-        # persist the working tool into memory
         try:
-            rag_manager.add_tool(name=None, language=state["language"], code=state["code"], metadata={"source":"auto_promote"})
+            rid = rag_manager.add_tool(
+                name=None,
+                language=state["language"],
+                code=state["code"],
+                metadata={"source": "auto_promote"}
+            )
+            logger.info(f"🧩 Stored successful tool in Pinecone (id={rid})")
         except Exception as e:
-            logger.warning("Failed to persist tool: %s", e)
+            logger.warning(f"⚠️ Failed to persist tool: {e}")
     else:
         logger.info("❌ Execution failed")
-        state["error"] = result["stderr"] or result.get("stderr")
-        # persist error for future retrieval
+        stderr = result.get("result", {}).get("stderr", "")
+        state["error"] = stderr
         try:
-            rag_manager.add_error(error_text=state["error"], stderr=state["result"].get("stderr"), context=state["code"])
+            rag_manager.add_error(
+                error_text=state["error"],
+                stderr=stderr,
+                context=state["code"]
+            )
+            logger.info("🧠 Logged error context for future retrieval")
         except Exception as e:
-            logger.warning("Failed to persist error: %s", e)
+            logger.warning(f"⚠️ Failed to persist error: {e}")
+
     return state
 
 
@@ -88,18 +105,18 @@ def node_fixer(state: NFState) -> NFState:
     return state
 
 
-# --- 5️⃣ Conditional routing ---
+# --- 5️⃣ Conditional Routing ---
 def decide_next(state: NFState):
     if state.get("error") and state["attempts"] < 3:
-        logger.info("🔁 Retrying after fix (attempt %d)", state["attempts"])
+        logger.info(f"🔁 Retrying after fix (attempt {state['attempts']})")
         return "executor"
     logger.info("🏁 Ending flow")
     return END
 
 
-# --- 6️⃣ Build Graph ---
+# --- 6️⃣ Build LangGraph ---
 def build_graph():
-    graph = StateGraph(NFState)  # ✅ schema instead of function
+    graph = StateGraph(NFState)
 
     graph.add_node("writer", node_writer)
     graph.add_node("executor", node_executor)
@@ -110,29 +127,25 @@ def build_graph():
     graph.add_conditional_edges("fixer", decide_next, {"executor": "executor", END: END})
 
     graph.set_entry_point("writer")
-
-    # ❌ Remove checkpointer requirement for simplicity
     return graph.compile()
 
 
-# --- 7️⃣ Runner ---
+# --- 7️⃣ Run a Full Task ---
 def run_task(task: str):
     print("=== NeuroForge LangGraph Orchestrator ===")
     flow = build_graph()
     state = flow.invoke(initial_state(task))
 
-    # Debug print for clarity
     print("\n--- FINAL STATE ---")
     print(state)
 
-    # Safely extract result
+    inner = state.get("result", {}).get("result", {})
     result = {
         "language": state.get("language"),
         "attempts": state.get("attempts", 0),
-        "stdout": state.get("result", {}).get("stdout", ""),
-        "stderr": state.get("result", {}).get("stderr", ""),
-        "returncode": state.get("result", {}).get("returncode", None),
+        "stdout": inner.get("stdout", ""),
+        "stderr": inner.get("stderr", ""),
+        "returncode": inner.get("returncode", None),
     }
 
     return result
-

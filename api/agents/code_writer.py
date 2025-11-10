@@ -34,18 +34,32 @@ def _configure_gemini():
 
 
 def _strip_code_fences(text: Optional[str]) -> str:
-    """Remove markdown fences and language labels like ```python ...```."""
+    """Remove markdown fences and language labels like ```python ...```, and stray leading language tokens."""
     if not text:
         return ""
-    lines = text.strip().splitlines()
-    # remove first/last lines if they're fences
-    if lines and lines[0].startswith("```"):
+    raw = text.strip()
+    # Fast path: if a fenced block exists anywhere, extract its inner content
+    if "```" in raw:
+        parts = raw.split("```")
+        # Take the first non-empty inner block after a fence
+        for i in range(1, len(parts), 2):
+            block = parts[i]
+            # Drop an initial language label on the same line, e.g., "python\n"
+            block_lines = block.splitlines()
+            if block_lines:
+                first = block_lines[0].strip().lower()
+                if first in {"python", "c", "cpp", "c++", "javascript", "java"}:
+                    block_lines = block_lines[1:]
+            code = "\n".join(block_lines).strip()
+            if code:
+                return code
+        # If nothing extracted, fall through to non-fence cleanup
+    # Non-fenced content: drop a stray first-line language token
+    lines = raw.splitlines()
+    while lines and lines[0].strip().lower() in {"python", "c", "cpp", "c++", "javascript", "java"}:
         lines = lines[1:]
-    if lines and lines[-1].startswith("```"):
-        lines = lines[:-1]
-    # remove leading language word if present
-    if lines and lines[0].strip().lower() in ["python", "c", "cpp", "c++", "javascript", "java"]:
-        lines = lines[1:]
+    # Also drop any residual lone backtick fence lines that might have slipped through
+    lines = [ln for ln in lines if not ln.strip().startswith("```")]
     return "\n".join(lines).strip()
 
 

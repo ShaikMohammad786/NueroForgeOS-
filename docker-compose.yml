@@ -1,11 +1,12 @@
-version: "3.8"
-
 services:
   api:
     build:
       context: ./api       # 👈 build starts inside /api
       dockerfile: Dockerfile
     container_name: neuroforge-api
+    environment:
+      - SANDBOX_DEFAULT_NETWORK=bridge
+      - RUNNER_URL=http://runner:8001/run
     ports:
       - "8000:8000"
     env_file:
@@ -14,7 +15,15 @@ services:
       - ./api:/app 
       - ./data/chroma:/data/chroma        
     depends_on:
-      - runner
+      runner:
+        condition: service_healthy
+    healthcheck:
+      # Use Python stdlib to avoid relying on curl availability in the image
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/'); sys.exit(0)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   runner:
@@ -26,10 +35,25 @@ services:
       - "8001:8001"
     env_file:
       - .env
+    environment:
+      - SANDBOX_MAX_CONCURRENCY=4
+      - SANDBOX_DOCKER_NETWORK=bridge
+      # Set to a host path to enable pip cache sharing (ensure it exists on the Docker host)
+      - SANDBOX_PIP_CACHE_DIR=/pip-cache
+      - SANDBOX_MEMORY_LIMIT=512m
+      - SANDBOX_CPU_LIMIT=1.0
+      - SANDBOX_PIDS_LIMIT=128
     volumes:
       - ./runner:/app
       - ./data/chroma:/data/chroma
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/pip-cache:/pip-cache
     security_opt:
       - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/docs"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped

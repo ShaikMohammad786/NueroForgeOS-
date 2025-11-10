@@ -94,7 +94,22 @@ def add_tool(name: Optional[str], language: str, code: str, metadata: Optional[D
     return rid
 
 def retrieve_tools(query: str, top_k: int = 4):
-    return _query_records("tools", query, top_k)
+    matches = _query_records("tools", query, top_k * 2)
+    # Re-rank locally: prefer higher vector score, recent items, and success_count
+    def score(m):
+        md = m.get("metadata", {}) or {}
+        vec = float(m.get("score", 0.0) or 0.0)
+        success = float(md.get("success_count", 1) or 1)
+        # Recent bonus
+        created = md.get("created_at", "")
+        recent_bonus = 0.0
+        if created:
+            # simple heuristic: newer gets small bonus
+            recent_bonus = 0.05
+        return vec + 0.2 * success + recent_bonus
+
+    ranked = sorted(matches, key=score, reverse=True)
+    return ranked[:top_k]
 
 # -------------------------------
 # ❌ Errors Collection
@@ -136,3 +151,25 @@ def add_pattern(name: str, content: str):
 
 def retrieve_patterns(query: str, top_k: int = 4):
     return _query_records("patterns", query, top_k)
+
+# -------------------------------
+# 🛠 Fixes Collection (error -> fixed code)
+# -------------------------------
+
+def add_fix(error_signature: str, language: str, fixed_code: str, metadata: Optional[Dict] = None):
+    """
+    Persist a mapping from a normalized error signature to a fixed code variant.
+    """
+    created_at = datetime.utcnow().isoformat()
+    metadata = metadata or {}
+    metadata.update({"language": language, "created_at": created_at, "error_signature": error_signature})
+    # Use signature as text to embed; include small code slice for context
+    text_for_embed = f"{error_signature}\n{fixed_code[:2048]}"
+    rid = _upsert_record("fixes", text_for_embed, metadata)
+    return rid
+
+def retrieve_fixes(error_signature_or_text: str, top_k: int = 2):
+    """
+    Retrieve candidate fixes by semantic similarity using the error signature or raw error text.
+    """
+    return _query_records("fixes", error_signature_or_text, top_k)

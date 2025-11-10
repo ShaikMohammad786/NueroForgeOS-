@@ -9,3 +9,4 @@ pinecone
 sentence-transformers==2.2.2
 huggingface-hub==0.17.3
 faiss-cpu==1.7.4  
+numpy>=1.23,<2
